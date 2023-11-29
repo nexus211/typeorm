@@ -1,0 +1,85 @@
+name: Test
+
+on:
+  pull_request:
+    branches:
+      - master
+  push:
+    branches:
+      - master
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 12        
+
+      - name: Install Packages
+        run: npm install
+
+      - name: Run Lint
+        run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:12-3.4
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 12
+
+      - name: Install Packages
+        run: npm install
+
+      - name: Prepare for tests
+        run: cp ormconfig.github.json ormconfig.json
+      
+      - name: Run Compile
+        run: npm run compile        
+      
+      - name: Run Tests with Coverage
+        run: npm run test-fast
+
+#  build:
+#    runs-on: ubuntu-latest
+#    needs: test
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v2
+#
+#      - name: Set up Node
+#        uses: actions/setup-node@v3
+#        with:
+#          node-version: 12        
+#
+#      - name: Install Packages
+#        run: npm install
+#
+#      - name: Run Compile
+#        run: npm run compile
+#
+#      - name: Persist Build Artifacts
+#        uses: actions/upload-artifact@v2
+#        with:
+#          name: build
+#          path: ~/typeorm/build

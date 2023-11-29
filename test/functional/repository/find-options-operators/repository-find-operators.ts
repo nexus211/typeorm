@@ -13,7 +13,8 @@ import {
     Like,
     MoreThan,
     MoreThanOrEqual,
-    Not
+    Not,
+    And
 } from "../../../../src";
 import {Post} from "./entity/Post";
 import {PostgresDriver} from "../../../../src/driver/postgres/PostgresDriver";
@@ -663,6 +664,41 @@ describe("repository > find options > operators", () => {
             { id: 6, likes: 6, title: "About #6" },
         ]);
     })));
+
+    it("and", () => Promise.all(connections.map(async connection => {
+        const foo = new Post()
+        foo.title = "Foo"
+        foo.likes = 0
+
+        const john = new Post()
+        john.title = "John"
+        john.likes = 11
+
+        const jane = new Post()
+        jane.title = "Jane"
+        jane.likes = 90
+
+        const bar = new Post()
+        bar.title = "Bar"
+        bar.likes = 101
+
+        await connection.manager.save([foo, john, jane, bar])
+
+        const posts = await connection.manager.find(Post, {
+            where: {
+                likes: And(Not(0), MoreThan(10), LessThan(100)),
+            },
+        })
+
+        // assert posts
+        expect(posts).to.have.length(2)
+
+        expect(posts.find((post) => post.title === "John")).to.be.not
+            .undefined
+
+        expect(posts.find((post) => post.title === "Jane")).to.be.not
+            .undefined        
+    })));    
 
     it("should work with ActiveRecord model", async () => {
         // These must run sequentially as we have the global context of the `PersonAR` ActiveRecord class
