@@ -1145,7 +1145,7 @@ export abstract class QueryBuilder<Entity> {
                     };
                 }
             } else if (parameterValue.type === "and") {
-                const values: FindOperator<any>[] = parameterValue.value
+                const values: FindOperator<any>[] = parameterValue.value;
 
                 return {
                     operator: parameterValue.type,
@@ -1157,7 +1157,7 @@ export abstract class QueryBuilder<Entity> {
                             ),
                         ),
                     ),
-                } 
+                };
             } else {
                 return {
                     operator: parameterValue.type,
