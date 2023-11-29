@@ -15,6 +15,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 12        
+
       - name: Install Packages
         run: npm install
 
@@ -52,24 +57,32 @@ jobs:
       - name: Prepare for tests
         run: cp ormconfig.github.json ormconfig.json
       
+      - name: Run Compile
+        run: npm run compile        
+      
       - name: Run Tests with Coverage
         run: npm run test-fast
 
-  build:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v2
-
-      - name: Install Packages
-        run: npm install
-
-      - name: Run Compile
-        run: npm run compile
-
-      - name: Persist Build Artifacts
-        uses: actions/upload-artifact@v2
-        with:
-          name: build
-          path: ~/typeorm/build
+#  build:
+#    runs-on: ubuntu-latest
+#    needs: test
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v2
+#
+#      - name: Set up Node
+#        uses: actions/setup-node@v3
+#        with:
+#          node-version: 12        
+#
+#      - name: Install Packages
+#        run: npm install
+#
+#      - name: Run Compile
+#        run: npm run compile
+#
+#      - name: Persist Build Artifacts
+#        uses: actions/upload-artifact@v2
+#        with:
+#          name: build
+#          path: ~/typeorm/build
