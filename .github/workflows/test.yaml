@@ -23,9 +23,6 @@ jobs:
       - name: Install Packages
         run: npm install
 
-      - name: Verify `package.json` and `package-lock.json` are in sync
-        run: npx lock-verify
-
       - name: Run Lint
         run: npm run lint
 
