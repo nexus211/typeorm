@@ -873,11 +873,12 @@ export abstract class QueryBuilder<Entity> {
                 return `${condition.parameters[0]} = ANY(${condition.parameters[1]})`;
             case "isNull":
                 return `${condition.parameters[0]} IS NULL`;
-
             case "not":
                 return `NOT(${this.createWhereConditionExpression(condition.condition)})`;
             case "brackets":
                 return `${this.createWhereConditionExpression(condition.condition, true)}`;
+            case "and":
+                return condition.parameters.join(" AND ");
         }
 
         throw new TypeError(`Unsupported FindOperator ${FindOperator.constructor.name}`);
