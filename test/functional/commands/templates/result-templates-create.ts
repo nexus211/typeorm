@@ -1,5 +1,5 @@
 export const resultsTemplates: Record<string, any> = {
-    control: `import {MigrationInterface, QueryRunner} from "typeorm";
+    control: `import {MigrationInterface, QueryRunner} from "@nexus211/typeorm";
 
 export class testMigration1610975184784 implements MigrationInterface {
 
@@ -20,7 +20,7 @@ module.exports = class testMigration1610975184784 {
     async down(queryRunner) {
     }
 }`,
-    timestamp: `import {MigrationInterface, QueryRunner} from "typeorm";
+    timestamp: `import {MigrationInterface, QueryRunner} from "@nexus211/typeorm";
 
 export class testMigration1641163894670 implements MigrationInterface {
 

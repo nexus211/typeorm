@@ -1,5 +1,5 @@
 export const resultsTemplates: Record<string, any> = {
-    control: `import {MigrationInterface, QueryRunner} from "typeorm";
+    control: `import {MigrationInterface, QueryRunner} from "@nexus211/typeorm";
 
 export class testMigration1610975184784 implements MigrationInterface {
     name = 'testMigration1610975184784'
@@ -26,7 +26,7 @@ module.exports = class testMigration1610975184784 {
         await queryRunner.query(\`DROP TABLE \\\`post\\\`\`);
     }
 }`,
-    timestamp: `import {MigrationInterface, QueryRunner} from "typeorm";
+    timestamp: `import {MigrationInterface, QueryRunner} from "@nexus211/typeorm";
 
 export class testMigration1641163894670 implements MigrationInterface {
     name = 'testMigration1641163894670'
@@ -39,5 +39,5 @@ export class testMigration1641163894670 implements MigrationInterface {
         await queryRunner.query(\`DROP TABLE \\\`post\\\`\`);
     }
 
-}`
+}`,
 };
