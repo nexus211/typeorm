@@ -666,32 +666,38 @@ describe("repository > find options > operators", () => {
     })));
 
     it("and", () => Promise.all(connections.map(async connection => {
+        const foo = new Post()
+        foo.title = "Foo"
+        foo.likes = 0
 
-        // insert some fake data
-        const post1 = new Post();
-        post1.title = "About #1";
-        post1.likes = 12;
-        await connection.manager.save(post1);
-        
-        const post2 = new Post();
-        post2.title = "About #2";
-        post2.likes = 3;
-        await connection.manager.save(post2);
+        const john = new Post()
+        john.title = "John"
+        john.likes = 11
 
-        const post3 = new Post();
-        post2.title = "About Other";
-        post2.likes = 3;
-        await connection.manager.save(post3);   
+        const jane = new Post()
+        jane.title = "Jane"
+        jane.likes = 90
 
-        // check operator
-        const loadedPosts = await connection.getRepository(Post).find({
-            title: And(
-                Like("About"),
-                Like("%#")
-            )
-        });
+        const bar = new Post()
+        bar.title = "Bar"
+        bar.likes = 101
 
-        loadedPosts.should.be.eql([{ id: 1, likes: 12, title: "About #1" }, { id: 2, likes: 3, title: "About #2" }]);
+        await connection.manager.save([foo, john, jane, bar])
+
+        const posts = await connection.manager.find(Post, {
+            where: {
+                likes: And(Not(0), MoreThan(10), LessThan(100)),
+            },
+        })
+
+        // assert posts
+        expect(posts).to.have.length(2)
+
+        expect(posts.find((post) => post.title === "John")).to.be.not
+            .undefined
+
+        expect(posts.find((post) => post.title === "Jane")).to.be.not
+            .undefined        
     })));    
 
     it("should work with ActiveRecord model", async () => {

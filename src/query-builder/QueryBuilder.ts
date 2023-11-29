@@ -1144,6 +1144,20 @@ export abstract class QueryBuilder<Entity> {
                         ]
                     };
                 }
+            } else if (parameterValue.type === "and") {
+                const values: FindOperator<any>[] = parameterValue.value
+
+                return {
+                    operator: parameterValue.type,
+                    parameters: values.map((operator) =>
+                        this.createWhereConditionExpression(
+                            this.getWherePredicateCondition(
+                                aliasPath,
+                                operator,
+                            ),
+                        ),
+                    ),
+                } 
             } else {
                 return {
                     operator: parameterValue.type,
