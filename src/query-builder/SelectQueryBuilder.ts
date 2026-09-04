@@ -1631,7 +1631,9 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
      * collection relation (one-to-many / many-to-many), or a raw table join whose
      * cardinality is not described by entity metadata. Many-to-one / one-to-one
      * relation joins keep exactly one row per root row, so a result set that only
-     * contains those can be paginated with plain LIMIT/OFFSET.
+     * contains those can be paginated with plain LIMIT/OFFSET. Only such joins
+     * need `skip`/`take` applied through the DISTINCT-ids subquery
+     * (see `executeEntitiesAndRawResults`).
      */
     protected hasRowMultiplyingJoin(): boolean {
         return this.expressionMap.joinAttributes.some(join => {
@@ -1641,27 +1643,13 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
     }
 
     /**
-     * Whether `skip`/`take` have to be applied through the DISTINCT-ids subquery
-     * (see `executeEntitiesAndRawResults`) instead of as LIMIT/OFFSET on the main
-     * query. That is only necessary when a join can multiply root rows, or when
-     * the connection forces it through the `distinctPagination` option.
-     */
-    protected needsDistinctPagination(): boolean {
-        if (this.expressionMap.joinAttributes.length === 0)
-            return false;
-        if (this.connection.options.distinctPagination === true)
-            return true;
-        return this.hasRowMultiplyingJoin();
-    }
-
-    /**
      * Whether this query paginates a joined result set directly with LIMIT/OFFSET:
-     * `skip`/`take` are set, there are joins, and none of them needs the DISTINCT path.
+     * `skip`/`take` are set, there are joins, and none of them can multiply rows.
      */
     protected usesDirectPagination(): boolean {
         return !!(this.expressionMap.skip || this.expressionMap.take)
             && this.expressionMap.joinAttributes.length > 0
-            && !this.needsDistinctPagination();
+            && !this.hasRowMultiplyingJoin();
     }
 
     /**
@@ -1686,7 +1674,7 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         // we can use regular limit / offset, that's why we add offset and limit construction here based on skip and take values
         let offset: number|undefined = this.expressionMap.offset,
             limit: number|undefined = this.expressionMap.limit;
-        if (!offset && !limit && !this.needsDistinctPagination()) {
+        if (!offset && !limit && !this.hasRowMultiplyingJoin()) {
             offset = this.expressionMap.skip;
             limit = this.expressionMap.take;
         }
@@ -1941,7 +1929,7 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         // If no join can multiply root rows, we can use a simpler `COUNT` instead of counting
         // distinct primary keys, which sorts or hashes the whole filtered set.
         if (
-            !this.needsDistinctPagination() &&
+            !this.hasRowMultiplyingJoin() &&
             this.expressionMap.relationIdAttributes.length === 0 &&
             this.expressionMap.relationCountAttributes.length === 0
         ) {
@@ -2048,7 +2036,7 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         // first query find ids in skip and take range
         // and second query loads the actual data in given ids range
         // (joins that keep one row per root row are paginated with plain LIMIT/OFFSET instead, see createLimitOffsetExpression)
-        if ((this.expressionMap.skip || this.expressionMap.take) && this.needsDistinctPagination()) {
+        if ((this.expressionMap.skip || this.expressionMap.take) && this.hasRowMultiplyingJoin()) {
 
             // we are skipping order by here because its not working in subqueries anyway
             // to make order by working we need to apply it on a distinct query

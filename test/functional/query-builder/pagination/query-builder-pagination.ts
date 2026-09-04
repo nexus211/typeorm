@@ -65,18 +65,6 @@ describe("query builder > pagination", () => {
         await connection.manager.save(posts);
     }
 
-    /** Runs `fn` with `distinctPagination` forced on for the connection, then restores it. */
-    async function withDistinctPagination<T>(connection: Connection, fn: () => Promise<T>): Promise<T> {
-        const options: any = connection.options;
-        const previous = options.distinctPagination;
-        options.distinctPagination = true;
-        try {
-            return await fn();
-        } finally {
-            options.distinctPagination = previous;
-        }
-    }
-
     it("paginates a many-to-one join with plain LIMIT/OFFSET", () => Promise.all(connections.map(async connection => {
         await seed(connection);
         logger(connection).clear();
@@ -187,33 +175,29 @@ describe("query builder > pagination", () => {
         expect(queries[queries.length - 1]).to.contain("COUNT(DISTINCT");
     })));
 
-    it("returns the same pages and totals as the DISTINCT path", () => Promise.all(connections.map(async connection => {
+    it("walks direct pages in the same order as the unpaginated result, without gaps or repeats", () => Promise.all(connections.map(async connection => {
         await seed(connection);
 
-        const readAllPages = async () => {
-            const pages: number[][] = [];
-            const totals: number[] = [];
-            for (let skip = 0; skip < POST_COUNT + 2; skip += 2) {
-                const [posts, count] = await connection.manager.createQueryBuilder(Post, "post")
-                    .leftJoinAndSelect("post.author", "author")
-                    .orderBy("author.name", "DESC")
-                    .addOrderBy("post.title", "ASC")
-                    .skip(skip)
-                    .take(2)
-                    .getManyAndCount();
-                pages.push(posts.map(post => post.id));
-                totals.push(count);
-            }
-            return { pages, totals };
-        };
+        // Order by a joined column with ties, then by title: exactly the shape where a
+        // LIMIT/OFFSET walk would drift if the tiebreaker or the offsets were wrong.
+        const query = () => connection.manager.createQueryBuilder(Post, "post")
+            .leftJoinAndSelect("post.author", "author")
+            .orderBy("author.name", "DESC")
+            .addOrderBy("post.title", "ASC");
 
-        const direct = await readAllPages();
-        const distinct = await withDistinctPagination(connection, readAllPages);
+        const expected = (await query().getMany()).map(post => post.id);
 
-        expect(direct.pages).to.deep.equal(distinct.pages);
-        expect(direct.totals).to.deep.equal(distinct.totals);
-        expect(direct.totals.every(total => total === POST_COUNT)).to.be.true;
-        expect(([] as number[]).concat(...direct.pages)).to.have.length(POST_COUNT);
+        const pages: number[][] = [];
+        const totals: number[] = [];
+        for (let skip = 0; skip < POST_COUNT + 2; skip += 2) {
+            const [posts, count] = await query().skip(skip).take(2).getManyAndCount();
+            pages.push(posts.map(post => post.id));
+            totals.push(count);
+        }
+
+        expect(([] as number[]).concat(...pages)).to.deep.equal(expected);
+        expect(pages.map(page => page.length)).to.deep.equal([2, 2, 2, 1, 0]);
+        expect(totals.every(total => total === POST_COUNT)).to.be.true;
     })));
 
     it("skips the count query when the page proves the total", () => Promise.all(connections.map(async connection => {
@@ -276,27 +260,6 @@ describe("query builder > pagination", () => {
         expect(posts).to.have.length(2);
         expect(count).to.equal(POST_COUNT);
         expect(logger(connection).queries).to.have.length(2);
-    })));
-
-    it("falls back to the DISTINCT path when the connection forces it", () => Promise.all(connections.map(async connection => {
-        await seed(connection);
-
-        await withDistinctPagination(connection, async () => {
-            logger(connection).clear();
-
-            const [posts, count] = await connection.manager.createQueryBuilder(Post, "post")
-                .leftJoinAndSelect("post.author", "author")
-                .orderBy("post.title", "ASC")
-                .take(POST_COUNT)
-                .getManyAndCount();
-
-            expect(posts).to.have.length(POST_COUNT);
-            expect(count).to.equal(POST_COUNT);
-
-            const queries = logger(connection).queries;
-            expect(queries[0]).to.contain("distinctAlias");
-            expect(queries[queries.length - 1]).to.contain("COUNT(DISTINCT");
-        });
     })));
 
     it("still paginates a query without joins directly", () => Promise.all(connections.map(async connection => {
