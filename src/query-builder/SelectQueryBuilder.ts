@@ -1658,10 +1658,18 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
      * set - can be skipped. An empty page behind an offset is the exception: it
      * only says the offset is at or past the end, not where the end is. Explicit
      * `limit`/`offset` are left alone because they need not match `take`/`skip`.
+     *
+     * The page size is measured in hydrated entities, which only equals the
+     * number of paginated root rows when the whole root entity - and so its
+     * primary key - is selected. With a partial selection that omits the primary
+     * key, the transformer groups every raw row under the same empty key and the
+     * page collapses into a single entity, so no total can be read off it.
      */
     protected canInferCountFromPage(pageSize: number): boolean {
-        const { skip, take, limit, offset } = this.expressionMap;
+        const { skip, take, limit, offset, mainAlias, selects } = this.expressionMap;
         if (!take || limit !== undefined || offset !== undefined)
+            return false;
+        if (!mainAlias || !selects.some(select => select.selection === mainAlias.name))
             return false;
         return pageSize < take && (pageSize > 0 || !skip);
     }

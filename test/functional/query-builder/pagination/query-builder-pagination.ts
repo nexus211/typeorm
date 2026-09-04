@@ -245,6 +245,30 @@ describe("query builder > pagination", () => {
         expect(logger(connection).queries.some(query => query.includes("COUNT("))).to.be.false;
     })));
 
+    it("does not infer the total from a partial selection that omits the primary key", () => Promise.all(connections.map(async connection => {
+        await seed(connection);
+
+        // Without the primary key in the selection every raw row is grouped under the
+        // same empty key, so the page hydrates into a single entity. Nothing about the
+        // total can be read off that, with or without a join.
+        for (const withJoin of [false, true]) {
+            logger(connection).clear();
+
+            let qb = connection.manager.createQueryBuilder(Post, "post")
+                .select("post.title")
+                .orderBy("post.title", "ASC")
+                .take(3);
+            if (withJoin)
+                qb = qb.leftJoin("post.author", "author");
+
+            const [posts, count] = await qb.getManyAndCount();
+
+            expect(posts.length).to.be.at.most(3);
+            expect(count).to.equal(POST_COUNT);
+            expect(logger(connection).queries).to.have.length(2);
+        }
+    })));
+
     it("leaves explicit limit/offset alone when inferring the total", () => Promise.all(connections.map(async connection => {
         await seed(connection);
         logger(connection).clear();
