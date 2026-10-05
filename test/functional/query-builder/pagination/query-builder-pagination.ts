@@ -1,7 +1,7 @@
 import "reflect-metadata";
 import { expect } from "chai";
 import { closeTestingConnections, createTestingConnections, reloadTestingDatabases } from "../../../utils/test-utils";
-import { Connection } from "../../../../src";
+import { Connection, SelectQueryBuilder } from "../../../../src";
 import { Logger } from "../../../../src/logger/Logger";
 import { Author } from "./entity/Author";
 import { Post } from "./entity/Post";
@@ -283,6 +283,54 @@ describe("query builder > pagination", () => {
 
         expect(posts).to.have.length(2);
         expect(count).to.equal(POST_COUNT);
+        expect(logger(connection).queries).to.have.length(2);
+    })));
+
+    it("keeps the DISTINCT path for shapes it does not reason about, even with only many-to-one joins", () => Promise.all(connections.map(async connection => {
+        await seed(connection);
+
+        const shapes: Array<() => SelectQueryBuilder<Post>> = [
+            // A second FROM source is a cross product: 7 posts x 2 tags = 14 rows.
+            // `addFrom` retypes the builder to the added entity; it still hydrates posts.
+            () => connection.manager.createQueryBuilder(Post, "post")
+                .addFrom(Tag, "tag")
+                .leftJoinAndSelect("post.author", "author") as unknown as SelectQueryBuilder<Post>,
+            () => connection.manager.createQueryBuilder(Post, "post")
+                .distinct(true)
+                .leftJoinAndSelect("post.author", "author"),
+        ];
+
+        for (const build of shapes) {
+            logger(connection).clear();
+
+            const [posts, count] = await build()
+                .orderBy("post.title", "ASC")
+                .take(3)
+                .getManyAndCount();
+
+            expect(posts.map(post => post.title)).to.deep.equal(["post 1", "post 2", "post 3"]);
+            expect(count).to.equal(POST_COUNT);
+
+            const queries = logger(connection).queries;
+            expect(queries[0]).to.contain("distinctAlias");
+            expect(queries[queries.length - 1]).to.contain("COUNT(DISTINCT");
+        }
+    })));
+
+    it("does not infer the total when several FROM sources multiply rows", () => Promise.all(connections.map(async connection => {
+        await seed(connection);
+        logger(connection).clear();
+
+        // No joins, so this is upstream's direct path: LIMIT applies to the 14 raw
+        // rows of the cross product, which hydrate into 7 posts. Seven is below
+        // `take`, but it is not the count upstream reports, so the count must run.
+        const [posts, count] = await connection.manager.createQueryBuilder(Post, "post")
+            .addFrom(Tag, "tag")
+            .take(20)
+            .getManyAndCount();
+
+        expect(posts).to.have.length(POST_COUNT);
+        expect(count).to.equal(POST_COUNT * 2);
         expect(logger(connection).queries).to.have.length(2);
     })));
 

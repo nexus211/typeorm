@@ -1643,13 +1643,33 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
     }
 
     /**
+     * Whether a query with joins has to keep the DISTINCT-ids pagination and
+     * `COUNT(DISTINCT ...)`. That is the case when a join can multiply root rows,
+     * and also for every shape this optimisation does not reason about, so they
+     * keep exactly the upstream behaviour: several FROM sources (`addFrom`, a cross
+     * product that multiplies rows without any join), GROUP BY, and SELECT DISTINCT
+     * or DISTINCT ON, where an appended primary-key ORDER BY would not even be valid.
+     * Queries without joins are unaffected and never need it.
+     */
+    protected needsDistinctPagination(): boolean {
+        const map = this.expressionMap;
+        if (map.joinAttributes.length === 0)
+            return false;
+        if (map.aliases.filter(alias => alias.type === "from").length > 1)
+            return true;
+        if (map.groupBys.length > 0 || map.selectDistinct || map.selectDistinctOn.length > 0)
+            return true;
+        return this.hasRowMultiplyingJoin();
+    }
+
+    /**
      * Whether this query paginates a joined result set directly with LIMIT/OFFSET:
-     * `skip`/`take` are set, there are joins, and none of them can multiply rows.
+     * `skip`/`take` are set, there are joins, and none of them needs the DISTINCT path.
      */
     protected usesDirectPagination(): boolean {
         return !!(this.expressionMap.skip || this.expressionMap.take)
             && this.expressionMap.joinAttributes.length > 0
-            && !this.hasRowMultiplyingJoin();
+            && !this.needsDistinctPagination();
     }
 
     /**
@@ -1666,10 +1686,14 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
      * page collapses into a single entity, so no total can be read off it.
      */
     protected canInferCountFromPage(pageSize: number): boolean {
-        const { skip, take, limit, offset, mainAlias, selects } = this.expressionMap;
+        const { skip, take, limit, offset, mainAlias, selects, aliases } = this.expressionMap;
         if (!take || limit !== undefined || offset !== undefined)
             return false;
         if (!mainAlias || !selects.some(select => select.selection === mainAlias.name))
+            return false;
+        // Several FROM sources multiply raw rows that hydration then collapses, so
+        // the entity count says nothing about the number of matching rows.
+        if (aliases.filter(alias => alias.type === "from").length > 1)
             return false;
         return pageSize < take && (pageSize > 0 || !skip);
     }
@@ -1682,7 +1706,7 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         // we can use regular limit / offset, that's why we add offset and limit construction here based on skip and take values
         let offset: number|undefined = this.expressionMap.offset,
             limit: number|undefined = this.expressionMap.limit;
-        if (!offset && !limit && !this.hasRowMultiplyingJoin()) {
+        if (!offset && !limit && !this.needsDistinctPagination()) {
             offset = this.expressionMap.skip;
             limit = this.expressionMap.take;
         }
@@ -1937,7 +1961,7 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         // If no join can multiply root rows, we can use a simpler `COUNT` instead of counting
         // distinct primary keys, which sorts or hashes the whole filtered set.
         if (
-            !this.hasRowMultiplyingJoin() &&
+            !this.needsDistinctPagination() &&
             this.expressionMap.relationIdAttributes.length === 0 &&
             this.expressionMap.relationCountAttributes.length === 0
         ) {
@@ -2044,7 +2068,7 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
         // first query find ids in skip and take range
         // and second query loads the actual data in given ids range
         // (joins that keep one row per root row are paginated with plain LIMIT/OFFSET instead, see createLimitOffsetExpression)
-        if ((this.expressionMap.skip || this.expressionMap.take) && this.hasRowMultiplyingJoin()) {
+        if ((this.expressionMap.skip || this.expressionMap.take) && this.needsDistinctPagination()) {
 
             // we are skipping order by here because its not working in subqueries anyway
             // to make order by working we need to apply it on a distinct query
