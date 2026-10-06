@@ -289,32 +289,40 @@ describe("query builder > pagination", () => {
     it("keeps the DISTINCT path for shapes it does not reason about, even with only many-to-one joins", () => Promise.all(connections.map(async connection => {
         await seed(connection);
 
-        const shapes: Array<() => SelectQueryBuilder<Post>> = [
-            // A second FROM source is a cross product: 7 posts x 2 tags = 14 rows.
-            // `addFrom` retypes the builder to the added entity; it still hydrates posts.
-            () => connection.manager.createQueryBuilder(Post, "post")
-                .addFrom(Tag, "tag")
-                .leftJoinAndSelect("post.author", "author") as unknown as SelectQueryBuilder<Post>,
-            () => connection.manager.createQueryBuilder(Post, "post")
-                .distinct(true)
-                .leftJoinAndSelect("post.author", "author"),
-        ];
-
-        for (const build of shapes) {
-            logger(connection).clear();
-
-            const [posts, count] = await build()
-                .orderBy("post.title", "ASC")
-                .take(3)
-                .getManyAndCount();
-
-            expect(posts.map(post => post.title)).to.deep.equal(["post 1", "post 2", "post 3"]);
-            expect(count).to.equal(POST_COUNT);
-
+        const expectDistinctShape = () => {
             const queries = logger(connection).queries;
             expect(queries[0]).to.contain("distinctAlias");
             expect(queries[queries.length - 1]).to.contain("COUNT(DISTINCT");
-        }
+        };
+
+        // A second FROM source is a cross product: 2 tags x 7 posts = 14 rows. The
+        // join hangs off the last FROM item because Postgres binds a JOIN only to the
+        // FROM entry right before it. `addFrom` retypes the builder to the added
+        // entity, but rows still hydrate into tags, the main alias.
+        logger(connection).clear();
+        const [tags, tagCount] = await (connection.manager.createQueryBuilder(Tag, "tag")
+            .addFrom(Post, "post")
+            .leftJoin("post.author", "author") as unknown as SelectQueryBuilder<Tag>)
+            .orderBy("tag.name", "ASC")
+            .take(1)
+            .getManyAndCount();
+
+        expect(tags.map(tag => tag.name)).to.deep.equal(["news"]);
+        expect(tagCount).to.equal(2);
+        expectDistinctShape();
+
+        // SELECT DISTINCT, where an appended primary-key ORDER BY is not always valid.
+        logger(connection).clear();
+        const [posts, postCount] = await connection.manager.createQueryBuilder(Post, "post")
+            .distinct(true)
+            .leftJoinAndSelect("post.author", "author")
+            .orderBy("post.title", "ASC")
+            .take(3)
+            .getManyAndCount();
+
+        expect(posts.map(post => post.title)).to.deep.equal(["post 1", "post 2", "post 3"]);
+        expect(postCount).to.equal(POST_COUNT);
+        expectDistinctShape();
     })));
 
     it("does not infer the total when several FROM sources multiply rows", () => Promise.all(connections.map(async connection => {
